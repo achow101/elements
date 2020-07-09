@@ -1,0 +1,290 @@
+Note that this format is not yet implemented by Elements.
+
+<pre>
+  BIP: PSET
+  Layer: Applications
+  Title: Partially Signed Elements Transaction Format
+  Author: Andrew Chow <achow101@gmail.com>
+  Comments-Summary: No comments yet.
+  Status: Proposed
+  Type: Standards Track
+  Created: 2020-07-09
+  License: BSD-2-Clause
+</pre>
+
+==Introduction==
+
+===Abstract===
+
+THis document describes proprietary extensions to the BIP 174 Partially Signed Bitcoin Transaction format.
+These extensions are for use in Elements Sidechains to hold the information necessary for
+Confidential Transactions, Confidential Assets, and Peg-in transactions.
+
+===Copyright===
+
+This BIP is licensed under the 2-clause BSD license.
+
+==Specification==
+
+The Partially Signed ELements Transaction (PSET) format is identical to the BIP 174 PSBT format.
+The changes are new proprietary type fields, a new magic sequence, and new roles.
+
+Note: <tt><..></tt> indicates that the data is prefixed by a compact size unsigned integer representing
+the length of that data. <tt>{..}</tt> indicates the raw data itself.
+
+At the beginning of each key is a compact size unsigned integer representing the type.
+This compact size unsigned integer must be minimally encoded, i.e. if the value can be represented using one byte, it must be represented as one byte.
+For convenience, this BIP will specify types using their full serialization, so a multi-byte type will have it's full prefix and zero padding as necessary.
+There are global types, per-input types, and per-output types.
+
+For elements, the identifier prefix string is <tt>pset</tt>.
+Note that previous implementations of PSET used a different prefix string and had different fields.
+The use of a new identifier prefix is to avoid conflicts with the previous implementations.
+
+The currently defined elements global proprietary types are as follows:
+
+* Type: Scalar Offset <tt>PSET_ELEMENTS_GLOBAL_SCALAR = 0x00</tt>
+** Key: A 32 byte Scalar Offset computed by a blinder.
+*** <tt>{0x00}|{offset}</tt>
+** Value: None. The value must have a length of zero.
+
+The currently defined elements per-input proprietary types are as folows:
+
+* Type: Issuance Value <tt>PSBT_ELEMENTS_IN_ISSUANCE_VALUE = 0x00</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x00}</tt>
+** Value: The explicit little endian 64-bit integer for the value of this issuance. This is mutually exclusive with <tt>PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT</tt>
+*** <tt>{value}</tt>
+
+* Type: Issuance Value Commitment <tt>PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT = 0x01</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x01}</tt>
+** Value: The 33 byte Value Commitment. This is mutually exclusive with <tt>PSBT_IN_ISSUANCE_VALUE</tt>.
+*** <tt>{value commitment}</tt>
+
+* Type: Issuance Value Rangeproof <tt>PSBT_ELEMENTS_IN_ISSUANCE_VALUE_RANGEPROOF = 0x02</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x02}</tt>
+** Value: The rangeproof
+*** <tt>{rangeproof}</tt>
+
+* Type: Issuance Inflation Keys Rangeproof <tt>PSBT_ELEMENTS_IN_ISSUANCE_KEYS_RANGEPROOF = 0x03</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x03}</tt>
+** Value: The rangeproof
+*** <tt>{rangeproof}</tt>
+
+* Type: Peg-in Transaction <tt>PSBT_ELEMENTS_IN_PEG_IN_TX = 0x04</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x04}</tt>
+** Value: The Peg-in Transaction serialized without witnesses.
+*** <tt>{tx}</tt>
+
+* Type: Peg-in Transaction Output Proof <tt>PSBT_ELEMENTS_IN_PEG_IN_TXOUT_PROOF = 0x05</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x05}</tt>
+** Value: The transaction output proof for the Peg-in Transaction.
+*** <tt>{txoutproof}</tt>
+
+* Type: Peg-in Genesis Hash <tt>PSBT_ELEMENTS_IN_PEG_IN_GENESIS = 0x06</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x06}</tt>
+** Value: The 32 byte genesis hash for the Peg-in Transaction.
+*** <tt>{hash}</tt>
+
+* Type: Peg-in Claim Script <tt>PSBT_ELEMENTS_IN_PEG_IN_CLAIM_SCRIPT = 0x07</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x07}</tt>
+** Value: The claim script for the Peg-in Transaction.
+*** <tt>{script}</tt>
+
+* Type: Peg-in Value <tt>PSBT_ELEMENTS_IN_PEG_IN_VALUE = 0x08</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x08}</tt>
+** Value: The little endian 64-bit value of the peg-in for the Peg-in Transaction.
+*** <tt>{value}</tt>
+
+* Type: Peg-in Witness <tt>PSBT_ELEMENTS_IN_PEG_IN_WITNESS = 0x09</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x09}</tt>
+** Value: The Peg-in witness for the Peg-in Transaction.
+*** <tt>{script}</tt>
+
+* Type: Issuance Inflation Keys Amount <tt>PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x0a}</tt>
+** Value: The number of inflation keys to set in this issuance. This is mutually exclusive with <tt>PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS</tt>.
+*** <tt>{amount}</tt>
+
+* Type: Issuance Inflation Keys Amount <tt>PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS_COMMITMENT</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x0b}</tt>
+** Value: The 33 byte commitment to the number of inflation keys in this issuance. This is mutually exclusive with <tt>PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS</tt>
+*** <tt>{amount commitment}</tt>
+
+The currently defined elements per-output proprietary types are as follows:
+
+* Type: Value <tt>PSBT_ELEMENTS_OUT_VALUE = 0x00</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x00}</tt>
+** Value: The explicit little endian 64-bit integer value for this output. This is mutually exclusive with <tt>PSBT_ELEMENTS_OUT_VALUE_COMMITMENT</tt>
+*** <tt>{value}</tt>
+
+* Type: Value Commitment <tt>PSBT_ELEMENTS_OUT_VALUE_COMMITMENT = 0x01</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x01}</tt>
+** Value: The 33 byte Value Commitment for this output. This is mutually exclusive with <tt>PSBT_ELEMENTS_OUT_VALUE</tt>.
+*** <tt>{value commitment}</tt>
+
+* Type: Asset Tag <tt>PSBT_ELEMENTS_OUT_ASSET = 0x02</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x02}</tt>
+** Value: The explicit 32 byte asset tag for this output. This is mutually exclusive with <tt>PSBT_ELEMENTS_OUT_ASSET_COMMITMENT</tt>.
+*** <tt>{asset}</tt>
+
+* Type: Asset Commitment <tt>PSBT_ELEMENTS_OUT_ASSET_COMMITMENT = 0x03</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x03}</tt>
+** Value: The 33 byte Asset Commitment for this output. This is mutually exclusive with <tt>PSBT_ELEMENTS_OUT_ASSET</tt>.
+*** <tt>{asset commitment}</tt>
+
+* Type: Value Rangeproof <tt>PSBT_ELEMENTS_OUT_VALUE_RANGEPROOF = 0x04</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x04}</tt>
+** Value: The rangeproof for the value of this output.
+*** <tt>{rangeproof}</tt>
+
+* Type: Asset Surjection Proof <tt>PSBT_ELEMENTS_OUT_ASSET_SURJECTION_PROOF = 0x05</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x05}</tt>
+** Value: The asset surjection proof for this output's asset.
+*** <tt>{asset surjection proof}</tt>
+
+* Type: Blinding Pubkey <tt>PSBT_ELEMENTS_OUT_BLINDING_PUBKEY = 0x06</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x06}</tt>
+** Value: The 33 byte blinding pubkey to be used when blinding this output.
+*** <tt>{blinding pubkey}</tt>
+
+* Type: Ephemeral ECDH Pubkey <tt>PSBT_ELEMENTS_OUT_ECDH_PUBKEY = 0x07</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x07}</tt>
+** Value: The 33 byte ephemeral pubkey used for ECDH in the blinding of this output.
+*** <tt>{ephemeral pubkey}</tt>
+
+* Type: Blinder Index <tt>PSBT_ELEMENTS_OUT_BLINDER_INDEX = 0x08</tt>
+** Key: None. The key must only contain the 1 byte type.
+*** <tt>{0x08}</tt>
+** Value: The unsigned 32-bit little endian integer index of the input whose owner should blind this output.
+*** <tt>{index}</tt>
+
+
+The PSET Magic Bytes are <tt>0x70736574</tt>
+
+===Handling Duplicated Keys===
+
+For all Elements PSBT proprietary fields, PSETs cannot be combined when there are duplicate fields except in the case where those fields are identical.
+
+==Roles==
+
+Using the transaction format involves many different responsibilities. Multiple responsibilities can be handled by a single entity,
+but each responsibility is specialized in what it should be capable of doing.
+Some roles are shared with BIP 174 PSBT and have expanded responsibilities.
+
+===Creator===
+
+The Creator creates a new PSET. It must create an unsigned transaction and place it in the PSET.
+
+For all outputs, the Creator must set the values and assets in the unsigned transaction to 0 or NULL.
+It will then attach the output value and asset type as explicit values in the <tt>PSBT_ELEMENTS_OUT_VALUE</tt> and <tt>PSBT_ELEMENTS_OUT_ASSET</tt> fields respectively.
+
+For any output which is going to be blinded, the Creator must add the blinding pubkey in the <tt>PSBT_ELEMENTS_OUT_BLINDING_PUBKEY</tt> field.
+
+If any input is blinded, at least one of the outputs must also be blinded, i.e. it must have a <tt>PSBT_ELEMENTS_OUT_BLINDING_PUBKEY</tt>.
+Such an output can be a 0 value OP_RETURN output.
+
+The Creator decides whether and which inputs are issuance inputs.
+For those inputs, the issuance data must be added to the input in the global unsigned transaction, except for the issuance amount.
+Such inputs must also have the issuance flag set in the outpoint of the input.
+This means that the asset blinding nonce and asset entropy need to be set while the asset issuance amount and asset inflation keys are 0 for now.
+The amount is added to the PSET input as <tt>PSBT_ELEMENTS_IN_ISSUANCE_VALUE</tt> and the number of inflation keys as <tt>PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS</tt>.
+
+The Creator decides whether and which inputs are Peg-in inputs.
+Peg-in inputs must have the Peg-in flag set in their outpoints.
+
+===Updater===
+
+The Updater must only accept a PSET.
+The Updater adds information to the PSET that it has access to. If it has the UTXO for an input, it should add it to the PSET.
+Such UTXOs must contain all commitments, rangeproofs, and surjection proofs if they are present.
+The Updater should also add redeemScripts, witnessScripts, and BIP 32 derivation paths to the input and output data if it knows them.
+
+For Peg-in inputs, if available, the updater should add the Peg-in transaction, the txout proof, the genesis hash, and the claim script.
+
+A single entity is likely to be both a Creator and Updater.
+
+===Blinder===
+
+PSET requires a role not present in PSBT, the Blinder. Blinders are similar to Signers and own inputs.
+The Blinder adds the blinding data to a transaction.
+
+For issuance inputs that belong to the Blinder, the Blinder should generate a random blinding factor and create a value commitment for the issuance value.
+It will then add the value commitment in the <tt>PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT</tt>. When it does so, it must remove the <tt>PSBT_ELEMENTS_IN_ISSUANCE_VALUE</tt> field.
+The blinder will also add the issuance value rangeproof and the issuance keys rangeproof in their respective fields.
+
+For the Blinder's outputs that are to be blinded (i.e. they have a blinding pubkey), the Blinder will create value and asset commitments and put them in their respective fields.
+When they do so, the <tt>PSBT_ELEMENTS_OUT_VALUE</tt> and <tt>PSBT_ELEMENTS_OUT_ASSET</tt> fields must be removed.
+The Blinder will create the Value Rangeproof and Asset Surjection Proof and put them in their respective fields.
+It will also add the ephemeral pubkey used for ECDH of the nonce for the rangeproof to the <tt>PSBT_ELEMENTS_OUT_ECDH_PUBKEY</tt> field.
+
+The blinder will then compute a scalar offset that will be added as a <tt>PSBT_ELEMENTS_GLOBAL_SCALAR</tt>.
+For each input and output owned/blinded by this blinder, the following formula is computed:
+<tt> asset_blinding_factor * amount + amount_blinding_factor (mod n)<tt>.
+The scalars for the inputs are summed, and then that sum is subtracted from the sum of the scalars for the outputs.
+The result is the scalar offset added as a <tt>PSBT_ELEMENTS_GLOBAL_SCALAR</tt>.
+
+The Blinder can identify which outputs it should blind by checking the <tt>PSBT_ELEMENTS_OUT_BLINDER_INDEX</tt>.
+Using that index, the Blinder should inspect the input at that same index.
+If that input belongs to the Blinder, then the output is to be blinded by it.
+
+For the Blinder who blinds the last output to be blinded, it will generate uniformly random asset and value blinding factors as normal.
+It will then compute a final scalar offset.
+Then it will subtract all of the scalar offsets from the value blinding factor for the last output and the result is the value blinding factor to be used for that last output.
+The creation of the commitments, proofs, and other fields proceeds as usual.
+Once all outputs are blinded, all <tt>PSBT_ELEMENTS_GLOBAL_SCALAR</tt> fields must be removed from the PSET.
+
+A single entity is likely to be a Creator, Updater, and Blinder.
+In that case, the PSET should never be output with <tt>PSBT_ELEMENTS_IN_ISSUANCE_VALUE</tt>, <tt>PSBT_ELEMENTS_IN_ISSUANCE_INFLATION_KEYS</tt>, <tt>PSBT_ELEMENTS_OUT_VALUE</tt>, or <tt>PSBT_ELEMENTS_OUT_ASSET</tt> except for unblinded issuances and unblinded outputs.
+
+===Signer===
+
+In addition to the BIP 174 PSBT Signer behavior, PSET specifies some addtional constraints.
+Before signing, the Signer must check whether blinding is complete. If any output contains a blinding pubkey but no commitments or proofs, then it must not sign.
+
+===Combiner===
+
+In addition to the BIP 174 PSBT Combiner behavior, PSET specifies some additional constraints.
+For all PSET output fields, the combiner must fail to combine if these fields are not identical.
+If the PSETs to be combined have incomplete blinded outputs but the combined result would only complete blinded outputs, then the Combiner must fail unless it is also a Blinder and can reblind its outputs.
+
+===Input Finalizer===
+
+In addition to the BIP 174 PSBT Input Finalizer behavior, PSET specifies some additional constraints.
+The Input Finalizer should also create the Peg-in witness.
+
+===Transaction Extractor===
+
+In addition to the BIP 174 PSBT Transaction Extractor behavior, PSET specifies some additional constraints.
+The Transaction Extractor also places the commitments, proofs, and other elements data in their correct place in the transaction.
+
+==Test Vectors==
+
+TBD
+
+==Rationale==
+
+<references/>
+
+==Reference implementation==
+
+The reference implementation of the PSBT format is available at https://github.com/achow101/elements/tree/pset.
