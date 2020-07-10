@@ -593,6 +593,9 @@ struct PSBTOutput
     void FromSignatureData(const SignatureData& sigdata);
     void Merge(const PSBTOutput& output);
     bool IsSane() const;
+    bool IsBlinded() const; //! This output has a blinding pubkey and is or will be blinded.
+    bool IsPartiallyBlinded() const; //! This output has some blinding information. This is not a good state to be in.
+    bool IsFullyBlinded() const; //! This output has all of the blinding information and is actually blinded.
     PSBTOutput() {}
 
     template <typename Stream>

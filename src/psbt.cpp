@@ -85,8 +85,22 @@ bool PartiallySignedTransaction::Merge(const PartiallySignedTransaction& psbt)
 
 bool PartiallySignedTransaction::IsSane() const
 {
-    for (PSBTInput input : inputs) {
+    for (unsigned int i = 0; i < inputs.size(); ++i) {
+        const PSBTInput& input = inputs[i];
         if (!input.IsSane()) return false;
+        // Check issuance is empty in the input
+        if (!tx->vin[i].assetIssuance.IsNull()) {
+            if (!tx->vin[i].assetIssuance.nAmount.IsNull()) return false;
+            if (!input.issuance_value && input.issuance_value_commitment.IsNull()) return false;
+        }
+    }
+    for (unsigned int i = 0; i < outputs.size(); ++i) {
+        const PSBTOutput& output = outputs[i];
+        if (!output.IsSane()) return false;
+        // Check that asset, value, and nonce are empty
+        if (!tx->vout[i].nValue.IsNull()) return false;
+        if (!tx->vout[i].nAsset.IsNull()) return false;
+        if (!tx->vout[i].nNonce.IsNull()) return false;
     }
     return true;
 }
@@ -217,6 +231,9 @@ bool PSBTInput::IsSane() const
     if (!witness_script.empty() && witness_utxo.IsNull()) return false;
     if (!final_script_witness.IsNull() && witness_utxo.IsNull()) return false;
 
+    // Cannot have both issuance value and issuance value commitment
+    if (issuance_value && !issuance_value_commitment.IsNull()) return false;
+
     return true;
 }
 
@@ -251,6 +268,25 @@ bool PSBTOutput::IsNull() const
     return redeem_script.empty() && witness_script.empty() && hd_keypaths.empty() && unknown.empty();
 }
 
+bool PSBTOutput::IsSane() const
+{
+    // Must have one of explicit value and asset or their commitments
+    if (!value && value_commitment.IsNull()) return false;
+    if (asset.IsNull() & asset_commitment.IsNull()) return false;
+
+    // Cannot have explicit value and value commitment
+    if (value && !value_commitment.IsNull()) return false;
+    // Cannot have explicit asset and asset commitment
+    if (!asset.IsNull() && !asset_commitment.IsNull()) return false;
+
+    // If this output needs to be blinded, make sure it is either fully blinded or not blinded
+    if (IsBlinded() && (IsPartiallyBlinded() && !IsFullyBlinded())) return false;
+    // If output is blinded, a blinder index needs to be specified
+    if (IsBlinded() && !blinder_index) return false;
+
+    return true;
+}
+
 void PSBTOutput::Merge(const PSBTOutput& output)
 {
     hd_keypaths.insert(output.hd_keypaths.begin(), output.hd_keypaths.end());
@@ -265,6 +301,34 @@ void PSBTOutput::Merge(const PSBTOutput& output)
     if (range_proof.empty() && !output.range_proof.empty()) range_proof = output.range_proof;
     if (surjection_proof.empty() && !output.surjection_proof.empty()) surjection_proof = output.surjection_proof;
 }
+
+bool PSBTOutput::IsBlinded() const
+{
+    return blinding_pubkey.IsValid();
+}
+
+bool PSBTOutput::IsPartiallyBlinded() const
+{
+    return IsBlinded() && (!value ||
+        !value_commitment.IsNull() ||
+        !asset_commitment.IsNull() ||
+        asset.IsNull() ||
+        !range_proof.empty() ||
+        !surjection_proof.empty() ||
+        ecdh_key.IsValid());
+}
+
+bool PSBTOutput::IsFullyBlinded() const
+{
+    return IsBlinded() && !value &&
+        !value_commitment.IsNull() &&
+        !asset_commitment.IsNull() &&
+        asset.IsNull() &&
+        !range_proof.empty() &&
+        !surjection_proof.empty() &&
+        ecdh_key.IsValid();
+}
+
 bool PSBTInputSigned(PSBTInput& input)
 {
     return !input.final_script_sig.empty() || !input.final_script_witness.IsNull();
