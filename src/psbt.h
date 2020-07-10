@@ -72,7 +72,7 @@ static constexpr uint8_t PSBT_ELEMENTS_OUT_ECDH_PUBKEY = 0x07;
 static constexpr uint8_t PSBT_ELEMENTS_OUT_BLINDER_INDEX = 0x08;
 
 // Proprietary type identifer string
-static const std::string PSBT_ELEMENTS_ID("elements");
+static const std::string PSBT_ELEMENTS_ID("pset");
 
 // The separator is 0x00. Reading this in means that the unserializer can interpret it
 // as a 0 length key which indicates that this is the separator. The separator has no value.
