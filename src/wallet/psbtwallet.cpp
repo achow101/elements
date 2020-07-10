@@ -36,12 +36,14 @@ TransactionError FillPSBTInputsData(const CWallet* pwallet, PartiallySignedTrans
                 input.non_witness_utxo = wtx.tx;
             }
 
+            /*
             // Grab the CA data
             CAmount val_tmp;
             wtx.GetNonIssuanceBlindingData(txin.prevout.n, nullptr, &val_tmp, &input.value_blinding_factor, &input.asset, &input.asset_blinding_factor);
             if (val_tmp != -1) {
                 input.value = val_tmp;
             }
+            */
         }
 
         // Get key origin info for input, if bip32derivs is true. Does not actually sign anything.
@@ -81,9 +83,11 @@ TransactionError SignPSBT(const CWallet* pwallet, PartiallySignedTransaction& ps
         if (!output.asset_commitment.IsNull()) {
             out.nAsset = output.asset_commitment;
         }
+        /*
         if (!output.nonce_commitment.IsNull()) {
             out.nNonce = output.nonce_commitment;
         }
+        */
 
         // The signature can't depend on witness contents, so these are technically not necessary to sign.
         // HOWEVER, as long as we're checking that values balance before signing, they are required.
@@ -96,6 +100,7 @@ TransactionError SignPSBT(const CWallet* pwallet, PartiallySignedTransaction& ps
         }
     }
 
+    /*
     // Stuff in the peg-in data
     for (unsigned int i = 0; i < tx.vin.size(); ++i) {
         PSBTInput& input = psbtx.inputs[i];
@@ -116,6 +121,7 @@ TransactionError SignPSBT(const CWallet* pwallet, PartiallySignedTransaction& ps
             input.witness_utxo = GetPeginOutputFromWitness(tx.witness.vtxinwit[i].m_pegin_witness);
         }
     }
+    */
 
     // This is a convenience/usability check -- it's not invalid to sign an unbalanced transaction, but it's easy to shoot yourself in the foot.
     if (!imbalance_ok) {

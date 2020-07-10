@@ -4805,6 +4805,7 @@ UniValue walletcreatefundedpsbt(const JSONRPCRequest& request)
         throw JSONRPCTransactionError(err);
     }
 
+    /*
     // Add peg-in stuff if it's there
     for (unsigned int i = 0; i < rawTx.vin.size(); ++i) {
         if (psbtx.tx->vin[i].m_is_pegin) {
@@ -4840,6 +4841,7 @@ UniValue walletcreatefundedpsbt(const JSONRPCRequest& request)
             psbtx.tx->vin[i].m_is_pegin = false;
         }
     }
+    */
 
     // Serialize the PSBT
     CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);

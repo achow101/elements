@@ -155,11 +155,6 @@ void PSBTInput::Merge(const PSBTInput& input)
     if (final_script_sig.empty() && !input.final_script_sig.empty()) final_script_sig = input.final_script_sig;
     if (final_script_witness.IsNull() && !input.final_script_witness.IsNull()) final_script_witness = input.final_script_witness;
 
-    if (!value && input.value) value = input.value;
-    if (value_blinding_factor.IsNull() && !input.value_blinding_factor.IsNull()) value_blinding_factor = input.value_blinding_factor;
-    if (asset.IsNull() && !input.asset.IsNull()) asset = input.asset;
-    if (asset_blinding_factor.IsNull() && !input.asset_blinding_factor.IsNull()) asset_blinding_factor = input.asset_blinding_factor;
-
     if (peg_in_tx.which() == 0 && peg_in_tx.which() > 0) peg_in_tx = input.peg_in_tx;
     if (txout_proof.which() == 0 && peg_in_tx.which() > 0) txout_proof = input.txout_proof;
     if (claim_script.empty() && !input.claim_script.empty()) claim_script = input.claim_script;
@@ -219,10 +214,7 @@ void PSBTOutput::Merge(const PSBTOutput& output)
 
     if (!blinding_pubkey.IsValid() && output.blinding_pubkey.IsValid()) blinding_pubkey = output.blinding_pubkey;
     if (value_commitment.IsNull() && !output.value_commitment.IsNull()) value_commitment = output.value_commitment;
-    if (value_blinding_factor.IsNull() && !output.value_blinding_factor.IsNull()) value_blinding_factor = output.value_blinding_factor;
     if (asset_commitment.IsNull() && !output.asset_commitment.IsNull()) asset_commitment = output.asset_commitment;
-    if (asset_blinding_factor.IsNull() && !output.asset_blinding_factor.IsNull()) asset_blinding_factor = output.asset_blinding_factor;
-    if (nonce_commitment.IsNull() && !output.nonce_commitment.IsNull()) nonce_commitment = output.nonce_commitment;
     if (range_proof.empty() && !output.range_proof.empty()) range_proof = output.range_proof;
     if (surjection_proof.empty() && !output.surjection_proof.empty()) surjection_proof = output.surjection_proof;
 }
@@ -329,6 +321,7 @@ bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransacti
         result.witness.vtxinwit[i].scriptWitness = psbtx.inputs[i].final_script_witness;
         PSBTInput& input = psbtx.inputs[i];
 
+        /*
         if (input.value && input.peg_in_tx.which() != 0 && input.txout_proof.which() != 0 && !input.claim_script.empty() && !input.genesis_hash.IsNull()) {
             CScriptWitness pegin_witness;
             if (Params().GetConsensus().ParentChainHasPow()) {
@@ -343,6 +336,7 @@ bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransacti
             result.vin[i].m_is_pegin = true;
             result.witness.vtxinwit[i].m_pegin_witness = pegin_witness;
         }
+        */
     }
 
     result.witness.vtxoutwit.resize(result.vout.size());
@@ -357,9 +351,11 @@ bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransacti
         if (!output.asset_commitment.IsNull()) {
             out.nAsset = output.asset_commitment;
         }
+        /*
         if (!output.nonce_commitment.IsNull()) {
             out.nNonce = output.nonce_commitment;
         }
+        */
         if (!output.range_proof.empty()) {
             outwit.vchRangeproof = output.range_proof;
         }
