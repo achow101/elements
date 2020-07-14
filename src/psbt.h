@@ -109,7 +109,7 @@ struct PSBTInput
     bool IsNull() const;
     void FillSignatureData(SignatureData& sigdata) const;
     void FromSignatureData(const SignatureData& sigdata);
-    void Merge(const PSBTInput& input);
+    bool Merge(const PSBTInput& input);
     bool IsSane() const;
     PSBTInput() {}
 
@@ -591,7 +591,7 @@ struct PSBTOutput
     bool IsNull() const;
     void FillSignatureData(SignatureData& sigdata) const;
     void FromSignatureData(const SignatureData& sigdata);
-    void Merge(const PSBTOutput& output);
+    bool Merge(const PSBTOutput& output);
     bool IsSane() const;
     bool IsBlinded() const; //! This output has a blinding pubkey and is or will be blinded.
     bool IsPartiallyBlinded() const; //! This output has some blinding information. This is not a good state to be in.

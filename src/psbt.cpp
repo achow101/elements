@@ -73,10 +73,14 @@ bool PartiallySignedTransaction::Merge(const PartiallySignedTransaction& psbt)
     }
 
     for (unsigned int i = 0; i < inputs.size(); ++i) {
-        inputs[i].Merge(psbt.inputs[i]);
+        if (!inputs[i].Merge(psbt.inputs[i])) {
+            return false;
+        }
     }
     for (unsigned int i = 0; i < outputs.size(); ++i) {
-        outputs[i].Merge(psbt.outputs[i]);
+        if (!outputs[i].Merge(psbt.outputs[i])) {
+            return false;
+        }
     }
     unknown.insert(psbt.unknown.begin(), psbt.unknown.end());
 
@@ -202,7 +206,7 @@ void PSBTInput::FromSignatureData(const SignatureData& sigdata)
     }
 }
 
-void PSBTInput::Merge(const PSBTInput& input)
+bool PSBTInput::Merge(const PSBTInput& input)
 {
     if (!non_witness_utxo && input.non_witness_utxo) non_witness_utxo = input.non_witness_utxo;
     if (witness_utxo.IsNull() && !input.witness_utxo.IsNull()) {
@@ -223,6 +227,8 @@ void PSBTInput::Merge(const PSBTInput& input)
     if (txout_proof.which() == 0 && peg_in_tx.which() > 0) txout_proof = input.txout_proof;
     if (claim_script.empty() && !input.claim_script.empty()) claim_script = input.claim_script;
     if (genesis_hash.IsNull() && !input.genesis_hash.IsNull()) genesis_hash = input.genesis_hash;
+
+    return true;
 }
 
 bool PSBTInput::IsSane() const
@@ -290,7 +296,7 @@ bool PSBTOutput::IsSane() const
     return true;
 }
 
-void PSBTOutput::Merge(const PSBTOutput& output)
+bool PSBTOutput::Merge(const PSBTOutput& output)
 {
     hd_keypaths.insert(output.hd_keypaths.begin(), output.hd_keypaths.end());
     unknown.insert(output.unknown.begin(), output.unknown.end());
@@ -298,11 +304,32 @@ void PSBTOutput::Merge(const PSBTOutput& output)
     if (redeem_script.empty() && !output.redeem_script.empty()) redeem_script = output.redeem_script;
     if (witness_script.empty() && !output.witness_script.empty()) witness_script = output.witness_script;
 
-    if (!blinding_pubkey.IsValid() && output.blinding_pubkey.IsValid()) blinding_pubkey = output.blinding_pubkey;
-    if (value_commitment.IsNull() && !output.value_commitment.IsNull()) value_commitment = output.value_commitment;
-    if (asset_commitment.IsNull() && !output.asset_commitment.IsNull()) asset_commitment = output.asset_commitment;
-    if (range_proof.empty() && !output.range_proof.empty()) range_proof = output.range_proof;
-    if (surjection_proof.empty() && !output.surjection_proof.empty()) surjection_proof = output.surjection_proof;
+    // If this IsBlinded and output IsBlinded, make sure the creator added fields are the same
+    if (IsBlinded() && output.IsBlinded()) {
+        if (!blinding_pubkey.IsValid() || !output.blinding_pubkey.IsValid() || !blinder_index || !output.blinder_index) return false;
+        if (blinding_pubkey != output.blinding_pubkey) return false;
+        if (blinder_index != output.blinder_index) return false;
+    }
+
+    // If this IsFullyBlinded and output IsFullyBlinded, just double check them
+    if (IsFullyBlinded() && output.IsFullyBlinded()) {
+        if (!value_commitment.IsNull() && !output.value_commitment.IsNull() && (value_commitment != output.value_commitment)) return false;
+        if (!asset_commitment.IsNull() && !output.asset_commitment.IsNull() && (asset_commitment != output.asset_commitment)) return false;
+        if (!range_proof.empty() && !output.range_proof.empty() && (range_proof != output.range_proof)) return false;
+        if (!surjection_proof.empty() && !output.surjection_proof.empty() && (surjection_proof != output.surjection_proof)) return false;
+        if (value || output.value || !asset.IsNull() || !output.asset.IsNull()) return false;
+    }
+
+    // If output IsFullyBlinded and this is not, copy the blinding data and remove the explicits
+    if (IsBlinded() && !IsFullyBlinded() && output.IsFullyBlinded()) {
+        value_commitment = output.value_commitment;
+        asset_commitment = output.asset_commitment;
+        range_proof = output.range_proof;
+        surjection_proof = output.surjection_proof;
+        ecdh_key = output.ecdh_key;
+    }
+
+    return true;
 }
 
 bool PSBTOutput::IsBlinded() const
