@@ -2,6 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <blindpsbt.h>
 #include <confidential_validation.h>
 #include <pegins.h>
 #include <wallet/psbtwallet.h>
@@ -213,4 +214,40 @@ TransactionError FillPSBT(const CWallet* pwallet, PartiallySignedTransaction& ps
     }
     FillPSBTOutputsData(pwallet, psbtx, bip32derivs);
     return TransactionError::OK;
+}
+
+BlindingStatus WalletBlindPSBT(const CWallet* pwallet, PartiallySignedTransaction& psbtx)
+{
+    // Gather our input data
+    std::map<uint32_t, std::tuple<CAmount, CAsset, uint256, uint256>> our_input_data;
+    std::map<uint32_t, std::pair<CKey, CKey>> our_issuances_to_blind;
+    for (unsigned int i = 0; i < psbtx.inputs.size(); ++i) {
+        CTxIn& txin = psbtx.tx->vin[i];
+        PSBTInput& input = psbtx.inputs[i];
+
+        if (txin.m_is_pegin && input.peg_in_value && !input.claim_script.empty()) {
+            if (!pwallet->IsMine(CTxOut(Params().GetConsensus().pegged_asset, *input.peg_in_value, input.claim_script))) continue;
+            our_input_data[i] = std::make_tuple(*input.peg_in_value, Params().GetConsensus().pegged_asset, uint256(), uint256());
+        } else {
+            if (!pwallet->IsMine(txin)) continue;
+            const CWalletTx* wtx = pwallet->GetWalletTx(txin.prevout.hash);
+            if (!wtx) continue;
+            CPubKey blinding_pubkey;
+            CAmount amount;
+            uint256 value_blinder;
+            CAsset asset;
+            uint256 asset_blinder;
+            wtx->GetNonIssuanceBlindingData(txin.prevout.n, &blinding_pubkey, &amount, &value_blinder, &asset, &asset_blinder);
+            our_input_data[i] = std::make_tuple(amount, asset, asset_blinder, value_blinder);
+        }
+
+        // Blind issuances on our inputs
+        if (input.issuance_value || input.issuance_inflation_keys_amt) {
+            CScript blinding_script(CScript() << OP_RETURN << std::vector<unsigned char>(txin.prevout.hash.begin(), txin.prevout.hash.end()) << txin.prevout.n);
+            our_issuances_to_blind[i] = std::make_pair(pwallet->GetBlindingKey(&blinding_script), pwallet->GetBlindingKey(&blinding_script));
+        }
+    }
+
+    // Blind the PSBT
+    return BlindPSBT(psbtx, our_input_data, our_issuances_to_blind);
 }
