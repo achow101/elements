@@ -231,6 +231,7 @@ The Blinder adds the blinding data to a transaction.
 For issuance inputs that belong to the Blinder, the Blinder should generate a random blinding factor and create a value commitment for the issuance value.
 It will then add the value commitment in the <tt>PSBT_ELEMENTS_IN_ISSUANCE_VALUE_COMMITMENT</tt>. When it does so, it must remove the <tt>PSBT_ELEMENTS_IN_ISSUANCE_VALUE</tt> field.
 The blinder will also add the issuance value rangeproof and the issuance keys rangeproof in their respective fields.
+For ease of identifying the blinder for an issuance, the input the issuance is attached to must belong to the blinder for the issuance.
 
 For the Blinder's outputs that are to be blinded (i.e. they have a blinding pubkey), the Blinder will create value and asset commitments and put them in their respective fields.
 When they do so, the <tt>PSBT_ELEMENTS_OUT_VALUE</tt> and <tt>PSBT_ELEMENTS_OUT_ASSET</tt> fields must be removed.
