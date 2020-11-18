@@ -11,6 +11,31 @@ PartiallySignedTransaction::PartiallySignedTransaction(const CMutableTransaction
 {
     inputs.resize(tx.vin.size());
     outputs.resize(tx.vout.size());
+
+    // Extract the value, asset, and nonce from the outputs
+    for (unsigned int i = 0; i < tx.vout.size(); ++i) {
+        CTxOut& txout = this->tx->vout[i];
+        PSBTOutput& output = outputs[i];
+
+        if (txout.nAsset.IsExplicit()) {
+            output.asset = txout.nAsset.GetAsset().id;
+        } else {
+            output.asset_commitment = txout.nAsset;
+        }
+        txout.nAsset.SetNull();
+
+        if (txout.nValue.IsExplicit()) {
+            output.value = txout.nValue.GetAmount();
+        } else {
+            output.value_commitment = txout.nValue;
+        }
+        txout.nValue.SetNull();
+
+        if (!txout.nNonce.IsNull()) {
+            output.ecdh_key.Set(txout.nNonce.vchCommitment.begin(), txout.nNonce.vchCommitment.end());
+            txout.nNonce.SetNull();
+        }
+    }
 }
 
 bool PartiallySignedTransaction::IsNull() const
