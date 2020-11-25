@@ -4879,10 +4879,20 @@ UniValue walletcreatefundedpsbt(const JSONRPCRequest& request)
     }
     FundTransaction(pwallet, rawTx, fee, change_position, request.params[3], request.params[5]);
     PartiallySignedTransaction psbtx(rawTx);
+    // Find an input that is ours
+    unsigned int blinder_index = 0;
+    for (; blinder_index < rawTx.vin.size(); ++blinder_index) {
+        const CTxIn& txin = rawTx.vin[blinder_index];
+        if (pwallet->IsMine(txin) == ISMINE_SPENDABLE) {
+            break;
+        }
+    }
+    assert(blinder_index < rawTx.vin.size()); // We added inputs, or existing inputs are ours, we should have a blinder index at this point.
     for (unsigned int i = 0; i < rawTx.vout.size(); ++i) {
         if (!rawTx.vout[i].nNonce.IsNull()) {
             psbtx.outputs[i].blinding_pubkey = CPubKey(rawTx.vout[i].nNonce.vchCommitment);
             psbtx.outputs[i].ecdh_key = CPubKey();
+            psbtx.outputs[i].blinder_index = blinder_index;
         }
         // Check the asset
         if (new_assets.count(psbtx.outputs[i].asset) > 0) {
