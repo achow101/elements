@@ -60,7 +60,7 @@ TransactionError SignPSBT(const CWallet* pwallet, PartiallySignedTransaction& ps
     // If we're signing, check that the transaction is not still in need of blinding
     if (sign) {
         for (const PSBTOutput& o : psbtx.outputs) {
-            if (o.blinding_pubkey.IsValid()) {
+            if (o.IsBlinded() && !o.IsFullyBlinded()) {
                 return TransactionError::BLINDING_REQUIRED;
             }
         }
@@ -80,15 +80,19 @@ TransactionError SignPSBT(const CWallet* pwallet, PartiallySignedTransaction& ps
 
         if (!output.value_commitment.IsNull()) {
             out.nValue = output.value_commitment;
+        } else if (output.value) {
+            out.nValue.SetToAmount(*output.value);
         }
         if (!output.asset_commitment.IsNull()) {
             out.nAsset = output.asset_commitment;
+        } else if (!output.asset.IsNull()) {
+            out.nAsset.SetToAsset(CAsset(output.asset));
         }
-        /*
-        if (!output.nonce_commitment.IsNull()) {
-            out.nNonce = output.nonce_commitment;
+        if (output.ecdh_key.IsValid()) {
+            // The nonce is actually the ecdh pubkey
+            out.nNonce.vchCommitment.clear();
+            out.nNonce.vchCommitment.insert(out.nNonce.vchCommitment.end(), output.ecdh_key.begin(), output.ecdh_key.end());
         }
-        */
 
         // The signature can't depend on witness contents, so these are technically not necessary to sign.
         // HOWEVER, as long as we're checking that values balance before signing, they are required.
@@ -101,28 +105,48 @@ TransactionError SignPSBT(const CWallet* pwallet, PartiallySignedTransaction& ps
         }
     }
 
-    /*
-    // Stuff in the peg-in data
+    // Stuff in the peg-in and issuanve data
     for (unsigned int i = 0; i < tx.vin.size(); ++i) {
         PSBTInput& input = psbtx.inputs[i];
-        if (input.value && input.peg_in_tx.which() != 0 && input.txout_proof.which() != 0 && !input.claim_script.empty() && !input.genesis_hash.IsNull()) {
+        CTxIn& txin = tx.vin[i];
+        CTxInWitness& txinwit = tx.witness.vtxinwit[i];
+        if (input.peg_in_value &&
+            input.peg_in_tx.which() != 0 &&
+            input.txout_proof.which() != 0 &&
+            !input.claim_script.empty() &&
+            !input.genesis_hash.IsNull()) {
             CScriptWitness pegin_witness;
             if (Params().GetConsensus().ParentChainHasPow()) {
                 const Sidechain::Bitcoin::CTransactionRef& btc_peg_in_tx = boost::get<Sidechain::Bitcoin::CTransactionRef>(input.peg_in_tx);
                 const Sidechain::Bitcoin::CMerkleBlock& btc_txout_proof = boost::get<Sidechain::Bitcoin::CMerkleBlock>(input.txout_proof);
-                pegin_witness = CreatePeginWitness(*input.value, input.asset, input.genesis_hash, input.claim_script, btc_peg_in_tx, btc_txout_proof);
+                pegin_witness = CreatePeginWitness(*input.peg_in_value, Params().GetConsensus().pegged_asset, input.genesis_hash, input.claim_script, btc_peg_in_tx, btc_txout_proof);
             } else {
                 const CTransactionRef& elem_peg_in_tx = boost::get<CTransactionRef>(input.peg_in_tx);
                 const CMerkleBlock& elem_txout_proof = boost::get<CMerkleBlock>(input.txout_proof);
-                pegin_witness = CreatePeginWitness(*input.value, input.asset, input.genesis_hash, input.claim_script, elem_peg_in_tx, elem_txout_proof);
+                pegin_witness = CreatePeginWitness(*input.peg_in_value, Params().GetConsensus().pegged_asset, input.genesis_hash, input.claim_script, elem_peg_in_tx, elem_txout_proof);
             }
             tx.vin[i].m_is_pegin = true;
-            tx.witness.vtxinwit[i].m_pegin_witness = pegin_witness;
+            txinwit.m_pegin_witness = pegin_witness;
             // Set the witness utxo
             input.witness_utxo = GetPeginOutputFromWitness(tx.witness.vtxinwit[i].m_pegin_witness);
         }
+        if (!input.issuance_value_commitment.IsNull()) {
+            txin.assetIssuance.nAmount = input.issuance_value_commitment;
+        } else if (input.issuance_value) {
+            txin.assetIssuance.nAmount.SetToAmount(*input.issuance_value);
+        }
+        if (!input.issuance_inflation_keys_commitment.IsNull()) {
+            txin.assetIssuance.nInflationKeys = input.issuance_inflation_keys_commitment;
+        } else if (input.issuance_inflation_keys_amt) {
+            txin.assetIssuance.nInflationKeys.SetToAmount(*input.issuance_inflation_keys_amt);
+        }
+        if (!input.issuance_rangeproof.empty()) {
+            txinwit.vchIssuanceAmountRangeproof = input.issuance_rangeproof;
+        }
+        if (!input.issuance_keys_rangeproof.empty()) {
+            txinwit.vchInflationKeysRangeproof = input.issuance_keys_rangeproof;
+        }
     }
-    */
 
     // This is a convenience/usability check -- it's not invalid to sign an unbalanced transaction, but it's easy to shoot yourself in the foot.
     if (!imbalance_ok) {
