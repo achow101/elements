@@ -223,7 +223,7 @@ TransactionError FillPSBTData(const CWallet* pwallet, PartiallySignedTransaction
 }
 
 // This function remains for backwards compatibility. It will not succeed in Elements unless everything involved is non-blinded.
-TransactionError FillPSBT(const CWallet* pwallet, PartiallySignedTransaction& psbtx, bool& complete, int sighash_type, bool sign, bool bip32derivs)
+TransactionError FillPSBT(const CWallet* pwallet, PartiallySignedTransaction& psbtx, bool& complete, int sighash_type, bool sign, bool bip32derivs, bool imbalance_ok)
 {
     complete = false;
     TransactionError te;
@@ -232,7 +232,7 @@ TransactionError FillPSBT(const CWallet* pwallet, PartiallySignedTransaction& ps
         return te;
     }
     // For backwards compatibility, do not check if amounts balance before signing in this case.
-    te = SignPSBT(pwallet, psbtx, complete, sighash_type, sign, true);
+    te = SignPSBT(pwallet, psbtx, complete, sighash_type, sign, imbalance_ok);
     if (te != TransactionError::OK) {
         return te;
     }

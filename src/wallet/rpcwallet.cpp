@@ -4641,13 +4641,35 @@ UniValue walletprocesspsbt(const JSONRPCRequest& request)
     // Get the sighash type
     int nHashType = ParseSighashString(request.params[2]);
 
-    // Fill transaction with our data and also sign
-    bool sign = request.params[1].isNull() ? true : request.params[1].get_bool();
+    // Don't sign, just fill data.
     bool bip32derivs = request.params[3].isNull() ? false : request.params[3].get_bool();
     bool complete = true;
-    const TransactionError err = FillPSBT(pwallet, psbtx, complete, nHashType, sign, bip32derivs);
+    const TransactionError err = FillPSBT(pwallet, psbtx, complete, nHashType, false, bip32derivs);
     if (err != TransactionError::OK) {
         throw JSONRPCTransactionError(err);
+    }
+
+    // If not blinded but needs blinding, blind
+    bool needs_blinding = false;
+    for (const PSBTOutput& output : psbtx.outputs) {
+        if (output.IsBlinded() && !output.IsFullyBlinded()) {
+            needs_blinding = true;
+            break;
+        }
+    }
+    if (needs_blinding) {
+        if (WalletBlindPSBT(pwallet, psbtx) != BlindingStatus::OK) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Something went wrong");
+        }
+    }
+
+    // If fully blinded, sign if we want to
+    bool sign = request.params[1].isNull() ? true : request.params[1].get_bool();
+    if (sign) {
+        const TransactionError err = FillPSBT(pwallet, psbtx, complete, nHashType, sign, bip32derivs, false);
+        if (err != TransactionError::OK) {
+            throw JSONRPCTransactionError(err);
+        }
     }
 
     UniValue result(UniValue::VOBJ);
