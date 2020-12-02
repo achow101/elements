@@ -1767,6 +1767,30 @@ UniValue decodepsbt(const JSONRPCRequest& request)
         if (!input.genesis_hash.IsNull()) {
             in.pushKV("pegin_genesis_hash", input.genesis_hash.GetHex());
         }
+        if (input.peg_in_value) {
+            in.pushKV("pegin_value", ValueFromAmount(*input.peg_in_value));
+        }
+        if (!input.peg_in_witness.IsNull()) {
+            UniValue txinwitness(UniValue::VARR);
+            for (const auto& item : input.final_script_witness.stack) {
+                txinwitness.push_back(HexStr(item.begin(), item.end()));
+            }
+            in.pushKV("pegin_witness", txinwitness);
+        }
+
+        // Issuance stuff
+        if (input.issuance_value) {
+            in.pushKV("issuance_value", ValueFromAmount(*input.issuance_value));
+        }
+        if (!input.issuance_value_commitment.IsNull()) {
+            in.pushKV("issuance_value_commitment", input.issuance_value_commitment.GetHex());
+        }
+        if (input.issuance_inflation_keys_amt) {
+            in.pushKV("issuance_inflation_keys_amount", ValueFromAmount(*input.issuance_inflation_keys_amt));
+        }
+        if (!input.issuance_inflation_keys_commitment.IsNull()) {
+            in.pushKV("issuance_inflation_keys_commitment", input.issuance_inflation_keys_commitment.GetHex());
+        }
 
         // Unknown data
         if (input.unknown.size() > 0) {
@@ -1811,9 +1835,19 @@ UniValue decodepsbt(const JSONRPCRequest& request)
             out.pushKV("bip32_derivs", keypaths);
         }
 
+        // Value
+        if (output.value) {
+            out.pushKV("value", ValueFromAmount(*output.value));
+        }
+
         // Value commitment
         if (!output.value_commitment.IsNull()) {
             out.pushKV("value_commitment", output.value_commitment.GetHex());
+        }
+
+        // Asset
+        if (!output.asset.IsNull()) {
+            out.pushKV("asset", output.asset.GetHex());
         }
 
         // Asset commitment
@@ -1831,6 +1865,16 @@ UniValue decodepsbt(const JSONRPCRequest& request)
         // Blinding pubkey
         if (output.blinding_pubkey.IsValid()) {
             out.pushKV("blinding_pubkey", HexStr(output.blinding_pubkey));
+        }
+
+        // ECDH Pubkey
+        if (output.ecdh_key.IsValid()) {
+            out.pushKV("ecdh_pubkey", HexStr(output.ecdh_key));
+        }
+
+        // Blinder index
+        if (output.blinder_index) {
+            out.pushKV("blinder_index", (uint64_t)*output.blinder_index);
         }
 
         // Unknown data
