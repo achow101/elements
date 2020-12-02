@@ -458,26 +458,47 @@ bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransacti
     result = *psbtx.tx;
     result.witness.vtxinwit.resize(result.vin.size());
     for (unsigned int i = 0; i < result.vin.size(); ++i) {
-        result.vin[i].scriptSig = psbtx.inputs[i].final_script_sig;
-        result.witness.vtxinwit[i].scriptWitness = psbtx.inputs[i].final_script_witness;
         PSBTInput& input = psbtx.inputs[i];
+        CTxInWitness& txinwit = result.witness.vtxinwit[i];
+        CTxIn& txin = result.vin[i];
 
-        /*
-        if (input.value && input.peg_in_tx.which() != 0 && input.txout_proof.which() != 0 && !input.claim_script.empty() && !input.genesis_hash.IsNull()) {
+        txin.scriptSig = input.final_script_sig;
+        txinwit.scriptWitness = input.final_script_witness;
+
+        if (input.peg_in_value &&
+            input.peg_in_tx.which() != 0 &&
+            input.txout_proof.which() != 0 &&
+            !input.claim_script.empty() &&
+            !input.genesis_hash.IsNull()) {
             CScriptWitness pegin_witness;
             if (Params().GetConsensus().ParentChainHasPow()) {
                 const Sidechain::Bitcoin::CTransactionRef& btc_peg_in_tx = boost::get<Sidechain::Bitcoin::CTransactionRef>(input.peg_in_tx);
                 const Sidechain::Bitcoin::CMerkleBlock& btc_txout_proof = boost::get<Sidechain::Bitcoin::CMerkleBlock>(input.txout_proof);
-                pegin_witness = CreatePeginWitness(*input.value, input.asset, input.genesis_hash, input.claim_script, btc_peg_in_tx, btc_txout_proof);
+                pegin_witness = CreatePeginWitness(*input.peg_in_value, Params().GetConsensus().pegged_asset, input.genesis_hash, input.claim_script, btc_peg_in_tx, btc_txout_proof);
             } else {
                 const CTransactionRef& elem_peg_in_tx = boost::get<CTransactionRef>(input.peg_in_tx);
                 const CMerkleBlock& elem_txout_proof = boost::get<CMerkleBlock>(input.txout_proof);
-                pegin_witness = CreatePeginWitness(*input.value, input.asset, input.genesis_hash, input.claim_script, elem_peg_in_tx, elem_txout_proof);
+                pegin_witness = CreatePeginWitness(*input.peg_in_value, Params().GetConsensus().pegged_asset, input.genesis_hash, input.claim_script, elem_peg_in_tx, elem_txout_proof);
             }
-            result.vin[i].m_is_pegin = true;
-            result.witness.vtxinwit[i].m_pegin_witness = pegin_witness;
+            txin.m_is_pegin = true;
+            txinwit.m_pegin_witness = pegin_witness;
         }
-        */
+        if (!input.issuance_value_commitment.IsNull()) {
+            txin.assetIssuance.nAmount = input.issuance_value_commitment;
+        } else if (input.issuance_value) {
+            txin.assetIssuance.nAmount.SetToAmount(*input.issuance_value);
+        }
+        if (!input.issuance_inflation_keys_commitment.IsNull()) {
+            txin.assetIssuance.nInflationKeys = input.issuance_inflation_keys_commitment;
+        } else if (input.issuance_inflation_keys_amt) {
+            txin.assetIssuance.nInflationKeys.SetToAmount(*input.issuance_inflation_keys_amt);
+        }
+        if (!input.issuance_rangeproof.empty()) {
+            txinwit.vchIssuanceAmountRangeproof = input.issuance_rangeproof;
+        }
+        if (!input.issuance_keys_rangeproof.empty()) {
+            txinwit.vchInflationKeysRangeproof = input.issuance_keys_rangeproof;
+        }
     }
 
     result.witness.vtxoutwit.resize(result.vout.size());
@@ -488,15 +509,19 @@ bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransacti
 
         if (!output.value_commitment.IsNull()) {
             out.nValue = output.value_commitment;
+        } else if (output.value) {
+            out.nValue.SetToAmount(*output.value);
         }
         if (!output.asset_commitment.IsNull()) {
             out.nAsset = output.asset_commitment;
+        } else if (!output.asset.IsNull()) {
+            out.nAsset.SetToAsset(CAsset(output.asset));
         }
-        /*
-        if (!output.nonce_commitment.IsNull()) {
-            out.nNonce = output.nonce_commitment;
+        if (output.ecdh_key.IsValid()) {
+            // The nonce is actually the ecdh pubkey
+            out.nNonce.vchCommitment.clear();
+            out.nNonce.vchCommitment.insert(out.nNonce.vchCommitment.end(), output.ecdh_key.begin(), output.ecdh_key.end());
         }
-        */
         if (!output.range_proof.empty()) {
             outwit.vchRangeproof = output.range_proof;
         }
