@@ -198,7 +198,6 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "sendmany", 8 , "output_assets" },
     { "sendmany", 9 , "ignoreblindfail" },
     { "sendtoaddress", 9 , "ignoreblindfail" },
-    { "createrawtransaction", 4, "output_assets" },
     { "calculateasset", 1, "vout" },
     { "calculateasset", 3, "blind_reissuance" },
     { "updatepsbtpegin", 1, "input" },

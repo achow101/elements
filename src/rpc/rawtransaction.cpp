@@ -484,14 +484,13 @@ void CreatePegInInput(CMutableTransaction& mtx, uint32_t input_idx, Sidechain::B
     CreatePegInInputInner(mtx, input_idx, tx_btc, merkle_block, claim_scripts, txData, txOutProofData);
 }
 
-CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, const UniValue& rbf, const UniValue& assets_in, std::vector<CPubKey>* output_pubkeys_out, bool allow_peg_in, bool allow_issuance)
+CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, const UniValue& rbf, std::vector<CPubKey>* output_pubkeys_out, bool allow_peg_in, bool allow_issuance)
 {
     if (inputs_in.isNull() || outputs_in.isNull())
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, arguments 1 and 2 must be non-null");
 
     UniValue inputs = inputs_in.get_array();
-    const bool outputs_is_obj = outputs_in.isObject();
-    UniValue outputs = outputs_is_obj ? outputs_in.get_obj() : outputs_in.get_array();
+    UniValue outputs = outputs_in.get_array();
 
     CMutableTransaction rawTx;
 
@@ -503,11 +502,6 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
     }
 
     bool rbfOptIn = rbf.isTrue();
-
-    UniValue assets;
-    if (!assets_in.isNull()) {
-        assets = assets_in.get_obj();
-    }
 
     for (unsigned int idx = 0; idx < inputs.size(); idx++) {
         const UniValue& input = inputs[idx];
@@ -615,21 +609,6 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
         rawTx.vin.push_back(in);
     }
 
-    if (!outputs_is_obj) {
-        // Translate array of key-value pairs into dict
-        UniValue outputs_dict = UniValue(UniValue::VOBJ);
-        for (size_t i = 0; i < outputs.size(); ++i) {
-            const UniValue& output = outputs[i];
-            if (!output.isObject()) {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, key-value pair not an object as expected");
-            }
-            if (output.size() != 1) {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, key-value pair must contain exactly one key");
-            }
-            outputs_dict.pushKVs(output);
-        }
-        outputs = std::move(outputs_dict);
-    }
     // Keep track of the fee output so we can add it in the very end of the transaction.
     CTxOut fee_out;
 
@@ -637,80 +616,94 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
     std::set<CTxDestination> destinations;
     bool has_data{false};
 
-    for (const std::string& name_ : outputs.getKeys()) {
+    for (unsigned int i = 0; i < outputs.size(); ++i) {
+        const UniValue& output = outputs[i].get_obj();
+
         // ELEMENTS:
         // Asset defaults to policyAsset
-        CAsset asset(::policyAsset);
-        if (!assets.isNull()) {
-            if (!find_value(assets, name_).isNull()) {
-                asset = CAsset(ParseHashO(assets, name_));
-            }
-        }
+        CTxOut out(::policyAsset, 0, CScript());
 
-        if (name_ == "data") {
-            if (has_data) {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, duplicate key: data");
-            }
-            has_data = true;
-            std::vector<unsigned char> data = ParseHexV(outputs[name_].getValStr(), "Data");
+        bool is_fee = false;
+        for (const std::string& name_ : output.getKeys()) {
+            if (name_ == "data") {
+                if (has_data) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, duplicate key: data");
+                }
+                has_data = true;
+                std::vector<unsigned char> data = ParseHexV(output[name_].getValStr(), "Data");
 
-            CTxOut out(asset, 0, CScript() << OP_RETURN << data);
-            rawTx.vout.push_back(out);
-            if (output_pubkeys_out) {
-                output_pubkeys_out->push_back(CPubKey());
-            }
-        } else if (name_ == "vdata") {
-            // ELEMENTS: support multi-push OP_RETURN
-            UniValue vdata = outputs[name_].get_array();
-            CScript datascript = CScript() << OP_RETURN;
-            for (size_t i = 0; i < vdata.size(); i++) {
-                std::vector<unsigned char> data = ParseHexV(vdata[i].get_str(), "Data");
-                datascript << data;
-            }
+                out.nValue = 0;
+                out.scriptPubKey = CScript() << OP_RETURN << data;
+                if (output_pubkeys_out) {
+                    output_pubkeys_out->push_back(CPubKey());
+                }
+            } else if (name_ == "vdata") {
+                // ELEMENTS: support multi-push OP_RETURN
+                UniValue vdata = output[name_].get_array();
+                CScript datascript = CScript() << OP_RETURN;
+                for (size_t i = 0; i < vdata.size(); i++) {
+                    std::vector<unsigned char> data = ParseHexV(vdata[i].get_str(), "Data");
+                    datascript << data;
+                }
 
-            CTxOut out(asset, 0, datascript);
-            rawTx.vout.push_back(out);
-            if (output_pubkeys_out) {
-                output_pubkeys_out->push_back(CPubKey());
-            }
-        } else if (name_ == "fee") {
-            // ELEMENTS: explicit fee outputs
-            CAmount nAmount = AmountFromValue(outputs[name_]);
-            fee_out = CTxOut(asset, nAmount, CScript());
-        } else if (name_ == "burn") {
-            CScript datascript = CScript() << OP_RETURN;
-            CAmount nAmount = AmountFromValue(outputs[name_]);
-            CTxOut out(asset, nAmount, datascript);
-            rawTx.vout.push_back(out);
-            if (output_pubkeys_out) {
-                output_pubkeys_out->push_back(CPubKey());
-            }
-        } else {
-            CTxDestination destination = DecodeDestination(name_);
-            if (!IsValidDestination(destination)) {
-                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Bitcoin address: ") + name_);
-            }
+                out.nValue = 0;
+                out.scriptPubKey = datascript;
+                if (output_pubkeys_out) {
+                    output_pubkeys_out->push_back(CPubKey());
+                }
+            } else if (name_ == "fee") {
+                // ELEMENTS: explicit fee outputs
+                CAmount nAmount = AmountFromValue(output[name_]);
+                out.nValue = nAmount;
+                out.scriptPubKey = CScript();
+                is_fee = true;
+                break;
+            } else if (name_ == "burn") {
+                CScript datascript = CScript() << OP_RETURN;
+                CAmount nAmount = AmountFromValue(output[name_]);
+                out.nValue = nAmount;
+                out.scriptPubKey = datascript;
+                if (output_pubkeys_out) {
+                    output_pubkeys_out->push_back(CPubKey());
+                }
+            } else if (name_ == "asset") {
+                // ELEMENTS: Assets are specified
+                out.nAsset = CAsset(ParseHashO(output, name_));
+            } else if (name_ == "blinder_index") {
+                // For PSBT, we don't do anything here with it, just skip
+                continue;
+            } else {
+                CTxDestination destination = DecodeDestination(name_);
+                if (!IsValidDestination(destination)) {
+                    throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Bitcoin address: ") + name_);
+                }
 
-            if (!destinations.insert(destination).second) {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid parameter, duplicated address: ") + name_);
-            }
+                if (!destinations.insert(destination).second) {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid parameter, duplicated address: ") + name_);
+                }
 
-            CScript scriptPubKey = GetScriptForDestination(destination);
-            CAmount nAmount = AmountFromValue(outputs[name_]);
+                CScript scriptPubKey = GetScriptForDestination(destination);
+                CAmount nAmount = AmountFromValue(output[name_]);
 
-            CTxOut out(asset, nAmount, scriptPubKey);
-            CPubKey blind_pub;
-            if (IsBlindDestination(destination)) {
-                blind_pub = GetDestinationBlindingKey(destination);
-                if (!output_pubkeys_out) {
-                    // Only use the pubkey-in-nonce hack if the caller is not getting the pubkeys the nice way.
-                    out.nNonce.vchCommitment = std::vector<unsigned char>(blind_pub.begin(), blind_pub.end());
+                out.nValue = nAmount;
+                out.scriptPubKey = scriptPubKey;
+                CPubKey blind_pub;
+                if (IsBlindDestination(destination)) {
+                    blind_pub = GetDestinationBlindingKey(destination);
+                    if (!output_pubkeys_out) {
+                        // Only use the pubkey-in-nonce hack if the caller is not getting the pubkeys the nice way.
+                        out.nNonce.vchCommitment = std::vector<unsigned char>(blind_pub.begin(), blind_pub.end());
+                    }
+                }
+                if (output_pubkeys_out) {
+                    output_pubkeys_out->push_back(blind_pub);
                 }
             }
+        }
+        if (is_fee) {
+            fee_out = out;
+        } else {
             rawTx.vout.push_back(out);
-            if (output_pubkeys_out) {
-                output_pubkeys_out->push_back(blind_pub);
-            }
         }
     }
 
@@ -762,6 +755,7 @@ static UniValue createrawtransaction(const JSONRPCRequest& request)
                             {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
                                 {
                                     {"address", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "A key-value pair. The key (string) is the bitcoin address, the value (float or string) is the amount in " + CURRENCY_UNIT},
+                                    {"asset", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "The asset tag for this output if it is not the main chain asset"},
                                 },
                                 },
                             {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
@@ -789,12 +783,6 @@ static UniValue createrawtransaction(const JSONRPCRequest& request)
                     {"locktime", RPCArg::Type::NUM, /* default */ "0", "Raw locktime. Non-0 value also locktime-activates inputs"},
                     {"replaceable", RPCArg::Type::BOOL, /* default */ "false", "Marks this transaction as BIP125-replaceable.\n"
             "                             Allows this transaction to be replaced by a transaction with higher fees. If provided, it is an error if explicit sequence numbers are incompatible."},
-                    {"output_assets", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "A json object of addresses to the assets (label or hex ID) used to pay them. (default: bitcoin)",
-                        {
-                            {"address", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "A key-value pair. The key (string) is the bitcoin address, the value is the asset label or asset ID."},
-                            {"fee", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "A key-value pair. The key (string) is the bitcoin address, the value is the asset label or asset ID."},
-                        },
-                        },
                 },
                 RPCResult{
             "\"transaction\"              (string) hex string of the transaction\n"
@@ -810,14 +798,13 @@ static UniValue createrawtransaction(const JSONRPCRequest& request)
 
     RPCTypeCheck(request.params, {
         UniValue::VARR,
-        UniValueType(), // ARR or OBJ, checked later
+        UniValue::VARR,
         UniValue::VNUM,
         UniValue::VBOOL,
-        UniValue::VOBJ
         }, true
     );
 
-    CMutableTransaction rawTx = ConstructTransaction(request.params[0], request.params[1], request.params[2], request.params[3], request.params[4]);
+    CMutableTransaction rawTx = ConstructTransaction(request.params[0], request.params[1], request.params[2], request.params[3]);
 
     return EncodeHexTx(CTransaction(rawTx));
 }
@@ -2072,13 +2059,13 @@ UniValue createpsbt(const JSONRPCRequest& request)
                         },
                         },
                     {"outputs", RPCArg::Type::ARR, RPCArg::Optional::NO, "a json array with outputs (key-value pairs), where none of the keys are duplicated.\n"
-                            "That is, each address can only appear once and there can only be one 'data' object.\n"
-                            "For compatibility reasons, a dictionary, which holds the key-value pairs directly, is also\n"
-                            "                             accepted as second parameter.",
+                            "That is, each address can only appear once and there can only be one 'data' object.",
                         {
                             {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
                                 {
                                     {"address", RPCArg::Type::AMOUNT, RPCArg::Optional::NO, "A key-value pair. The key (string) is the bitcoin address, the value (float or string) is the amount in " + CURRENCY_UNIT},
+                                    {"blinder_index", RPCArg::Type::NUM, RPCArg::Optional::OMITTED, "The index of the input whose signer will blind this output. Must be provided if this output is to be blinded"},
+                                    {"asset", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "The asset tag for this output if it is not the main chain asset"},
                                 },
                                 },
                             {"", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "",
@@ -2091,12 +2078,6 @@ UniValue createpsbt(const JSONRPCRequest& request)
                     {"locktime", RPCArg::Type::NUM, /* default */ "0", "Raw locktime. Non-0 value also locktime-activates inputs"},
                     {"replaceable", RPCArg::Type::BOOL, /* default */ "false", "Marks this transaction as BIP125 replaceable.\n"
                             "                             Allows this transaction to be replaced by a transaction with higher fees. If provided, it is an error if explicit sequence numbers are incompatible."},
-                    {"output_assets", RPCArg::Type::OBJ, RPCArg::Optional::OMITTED, "A json object of addresses to the assets (label or hex ID) used to pay them. (default: bitcoin)",
-                        {
-                            {"address", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "A key-value pair. The key (string) is the bitcoin address, the value is the asset label or asset ID."},
-                            {"fee", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "A key-value pair. The key (string) is the bitcoin address, the value is the asset label or asset ID."},
-                        },
-                        },
                 },
                 RPCResult{
                             "  \"psbt\"        (string)  The resulting raw transaction (base64-encoded string)\n"
@@ -2109,14 +2090,14 @@ UniValue createpsbt(const JSONRPCRequest& request)
 
     RPCTypeCheck(request.params, {
         UniValue::VARR,
-        UniValueType(), // ARR or OBJ, checked later
+        UniValue::VARR,
         UniValue::VNUM,
         UniValue::VBOOL,
         }, true
     );
 
     std::vector<CPubKey> output_pubkeys;
-    CMutableTransaction rawTx = ConstructTransaction(request.params[0], request.params[1], request.params[2], request.params[3], request.params[4], &output_pubkeys, false /* allow_peg_in */, true /* allow_issuance */);
+    CMutableTransaction rawTx = ConstructTransaction(request.params[0], request.params[1], request.params[2], request.params[3], &output_pubkeys, false /* allow_peg_in */, true /* allow_issuance */);
 
     // Make a blank psbt
     std::set<uint256> new_assets;
@@ -3284,7 +3265,7 @@ static const CRPCCommand commands[] =
 { //  category              name                            actor (function)            argNames
   //  --------------------- ------------------------        -----------------------     ----------
     { "rawtransactions",    "getrawtransaction",            &getrawtransaction,         {"txid","verbose","blockhash"} },
-    { "rawtransactions",    "createrawtransaction",         &createrawtransaction,      {"inputs","outputs","locktime","replaceable", "output_assets"} },
+    { "rawtransactions",    "createrawtransaction",         &createrawtransaction,      {"inputs","outputs","locktime","replaceable"} },
     { "rawtransactions",    "decoderawtransaction",         &decoderawtransaction,      {"hexstring","iswitness"} },
     { "rawtransactions",    "decodescript",                 &decodescript,              {"hexstring"} },
     { "rawtransactions",    "sendrawtransaction",           &sendrawtransaction,        {"hexstring","allowhighfees"} },
