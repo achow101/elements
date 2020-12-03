@@ -4860,10 +4860,8 @@ UniValue walletcreatefundedpsbt(const JSONRPCRequest& request)
     CAmount fee;
     int change_position;
 
-    // It's hard to control the behavior of FundTransaction, so we will wait
-    //   until after it's done, then extract the blinding keys from the output
-    //   nonces.
-    CMutableTransaction rawTx = ConstructTransaction(request.params[0], request.params[1], request.params[2], request.params[3]["replaceable"], nullptr /* output_pubkeys_out */, false /* allow_peg_in */, true /* allow_issuance */);
+    std::map<CTxOut, PSBTOutput> psbt_outs;
+    CMutableTransaction rawTx = ConstructTransaction(request.params[0], request.params[1], request.params[2], request.params[3]["replaceable"], &psbt_outs, false /* allow_peg_in */, true /* allow_issuance */);
 
     // Make a blank psbt
     std::set<uint256> new_assets;
@@ -4913,17 +4911,22 @@ UniValue walletcreatefundedpsbt(const JSONRPCRequest& request)
     }
     assert(blinder_index < rawTx.vin.size()); // We added inputs, or existing inputs are ours, we should have a blinder index at this point.
     for (unsigned int i = 0; i < rawTx.vout.size(); ++i) {
-        if (!rawTx.vout[i].nNonce.IsNull()) {
-            psbtx.outputs[i].blinding_pubkey = CPubKey(rawTx.vout[i].nNonce.vchCommitment);
-            psbtx.outputs[i].ecdh_key = CPubKey();
-            psbtx.outputs[i].blinder_index = blinder_index;
+        PSBTOutput& output = psbtx.outputs[i];
+        PSBTOutput& construct_psbt_out = psbt_outs[rawTx.vout[i]];
+
+        output.blinding_pubkey = construct_psbt_out.blinding_pubkey;
+        output.blinder_index = construct_psbt_out.blinder_index;
+
+        if (output.blinder_index) {
+            output.blinder_index = blinder_index;
         }
+
         // Check the asset
-        if (new_assets.count(psbtx.outputs[i].asset) > 0) {
-            new_assets.erase(psbtx.outputs[i].asset);
+        if (new_assets.count(output.asset) > 0) {
+            new_assets.erase(output.asset);
         }
-        if (new_reissuance.count(psbtx.outputs[i].asset) > 0) {
-            new_reissuance.erase(psbtx.outputs[i].asset);
+        if (new_reissuance.count(output.asset) > 0) {
+            new_reissuance.erase(output.asset);
         }
     }
 

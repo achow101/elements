@@ -484,7 +484,7 @@ void CreatePegInInput(CMutableTransaction& mtx, uint32_t input_idx, Sidechain::B
     CreatePegInInputInner(mtx, input_idx, tx_btc, merkle_block, claim_scripts, txData, txOutProofData);
 }
 
-CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, const UniValue& rbf, std::vector<CPubKey>* output_pubkeys_out, bool allow_peg_in, bool allow_issuance)
+CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniValue& outputs_in, const UniValue& locktime, const UniValue& rbf, std::map<CTxOut, PSBTOutput>* outputs_aux, bool allow_peg_in, bool allow_issuance)
 {
     if (inputs_in.isNull() || outputs_in.isNull())
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, arguments 1 and 2 must be non-null");
@@ -616,8 +616,10 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
     std::set<CTxDestination> destinations;
     bool has_data{false};
 
+    std::vector<PSBTOutput> psbt_outs;
     for (unsigned int i = 0; i < outputs.size(); ++i) {
         const UniValue& output = outputs[i].get_obj();
+        PSBTOutput psbt_out;
 
         // ELEMENTS:
         // Asset defaults to policyAsset
@@ -634,9 +636,6 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
 
                 out.nValue = 0;
                 out.scriptPubKey = CScript() << OP_RETURN << data;
-                if (output_pubkeys_out) {
-                    output_pubkeys_out->push_back(CPubKey());
-                }
             } else if (name_ == "vdata") {
                 // ELEMENTS: support multi-push OP_RETURN
                 UniValue vdata = output[name_].get_array();
@@ -648,9 +647,6 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
 
                 out.nValue = 0;
                 out.scriptPubKey = datascript;
-                if (output_pubkeys_out) {
-                    output_pubkeys_out->push_back(CPubKey());
-                }
             } else if (name_ == "fee") {
                 // ELEMENTS: explicit fee outputs
                 CAmount nAmount = AmountFromValue(output[name_]);
@@ -663,15 +659,12 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
                 CAmount nAmount = AmountFromValue(output[name_]);
                 out.nValue = nAmount;
                 out.scriptPubKey = datascript;
-                if (output_pubkeys_out) {
-                    output_pubkeys_out->push_back(CPubKey());
-                }
             } else if (name_ == "asset") {
                 // ELEMENTS: Assets are specified
                 out.nAsset = CAsset(ParseHashO(output, name_));
             } else if (name_ == "blinder_index") {
-                // For PSBT, we don't do anything here with it, just skip
-                continue;
+                // For PSET
+                psbt_out.blinder_index = find_value(output, name_).get_int();
             } else {
                 CTxDestination destination = DecodeDestination(name_);
                 if (!IsValidDestination(destination)) {
@@ -690,28 +683,31 @@ CMutableTransaction ConstructTransaction(const UniValue& inputs_in, const UniVal
                 CPubKey blind_pub;
                 if (IsBlindDestination(destination)) {
                     blind_pub = GetDestinationBlindingKey(destination);
-                    if (!output_pubkeys_out) {
+                    if (!outputs_aux) {
                         // Only use the pubkey-in-nonce hack if the caller is not getting the pubkeys the nice way.
                         out.nNonce.vchCommitment = std::vector<unsigned char>(blind_pub.begin(), blind_pub.end());
                     }
                 }
-                if (output_pubkeys_out) {
-                    output_pubkeys_out->push_back(blind_pub);
-                }
+                psbt_out.blinding_pubkey = blind_pub;
             }
         }
         if (is_fee) {
             fee_out = out;
         } else {
             rawTx.vout.push_back(out);
+            psbt_outs.push_back(psbt_out);
         }
     }
 
     // Add fee output in the end.
     if (!fee_out.nValue.IsNull() && fee_out.nValue.GetAmount() > 0) {
         rawTx.vout.push_back(fee_out);
-        if (output_pubkeys_out) {
-            output_pubkeys_out->push_back(CPubKey());
+        psbt_outs.emplace_back();
+    }
+
+    if (outputs_aux) {
+        for (unsigned int i = 0; i < rawTx.vout.size(); ++i) {
+            (*outputs_aux)[rawTx.vout[i]] = psbt_outs[i];
         }
     }
 
@@ -2096,8 +2092,8 @@ UniValue createpsbt(const JSONRPCRequest& request)
         }, true
     );
 
-    std::vector<CPubKey> output_pubkeys;
-    CMutableTransaction rawTx = ConstructTransaction(request.params[0], request.params[1], request.params[2], request.params[3], &output_pubkeys, false /* allow_peg_in */, true /* allow_issuance */);
+    std::map<CTxOut, PSBTOutput> psbt_outs;
+    CMutableTransaction rawTx = ConstructTransaction(request.params[0], request.params[1], request.params[2], request.params[3], &psbt_outs, false /* allow_peg_in */, true /* allow_issuance */);
 
     // Make a blank psbt
     std::set<uint256> new_assets;
@@ -2137,15 +2133,18 @@ UniValue createpsbt(const JSONRPCRequest& request)
     }
     PartiallySignedTransaction psbtx(rawTx);
     for (unsigned int i = 0; i < rawTx.vout.size(); ++i) {
-        if (output_pubkeys[i].IsValid()) {
-            psbtx.outputs[i].blinding_pubkey = output_pubkeys[i];
-        }
+        PSBTOutput& output = psbtx.outputs[i];
+        PSBTOutput& construct_psbt_out = psbt_outs[rawTx.vout[i]];
+
+        output.blinding_pubkey = construct_psbt_out.blinding_pubkey;
+        output.blinder_index = construct_psbt_out.blinder_index;
+
         // Check the asset
-        if (new_assets.count(psbtx.outputs[i].asset) > 0) {
-            new_assets.erase(psbtx.outputs[i].asset);
+        if (new_assets.count(output.asset) > 0) {
+            new_assets.erase(output.asset);
         }
-        if (new_reissuance.count(psbtx.outputs[i].asset) > 0) {
-            new_reissuance.erase(psbtx.outputs[i].asset);
+        if (new_reissuance.count(output.asset) > 0) {
+            new_reissuance.erase(output.asset);
         }
     }
 

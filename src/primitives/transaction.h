@@ -312,6 +312,11 @@ public:
         return !(a == b);
     }
 
+    friend bool operator<(const CTxOut& a, const CTxOut& b)
+    {
+        return a.scriptPubKey < b.scriptPubKey;
+    }
+
     std::string ToString() const;
 };
 
