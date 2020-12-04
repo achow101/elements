@@ -203,7 +203,7 @@ public:
     }
 
     void SetNull() { nAmount.SetNull(); nInflationKeys.SetNull(); }
-    bool IsNull() const { return (nAmount.IsNull() && nInflationKeys.IsNull()); }
+    bool IsNull() const { return (nAmount.IsNull() && nInflationKeys.IsNull()) && assetBlindingNonce.IsNull() && assetEntropy.IsNull(); }
 
     friend bool operator==(const CAssetIssuance& a, const CAssetIssuance& b)
     {
