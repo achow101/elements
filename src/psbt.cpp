@@ -12,6 +12,28 @@ PartiallySignedTransaction::PartiallySignedTransaction(const CMutableTransaction
     inputs.resize(tx.vin.size());
     outputs.resize(tx.vout.size());
 
+    // Extract the issuance data from the inputs
+    for (unsigned int i = 0; i < tx.vin.size(); ++i) {
+        CTxIn& txin = this->tx->vin[i];
+        PSBTInput& input = inputs[i];
+
+        if (!txin.assetIssuance.IsNull()) {
+            if (txin.assetIssuance.nAmount.IsExplicit()) {
+                input.issuance_value = txin.assetIssuance.nAmount.GetAmount();
+            } else {
+                input.issuance_value_commitment = txin.assetIssuance.nAmount;
+            }
+            txin.assetIssuance.nAmount.SetNull();
+
+            if (txin.assetIssuance.nInflationKeys.IsExplicit()) {
+                input.issuance_inflation_keys_amt = txin.assetIssuance.nInflationKeys.GetAmount();
+            } else {
+                input.issuance_inflation_keys_commitment = txin.assetIssuance.nInflationKeys;
+            }
+            txin.assetIssuance.nInflationKeys.SetNull();
+        }
+    }
+
     // Extract the value, asset, and nonce from the outputs
     for (unsigned int i = 0; i < tx.vout.size(); ++i) {
         CTxOut& txout = this->tx->vout[i];
