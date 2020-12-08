@@ -133,6 +133,9 @@ bool PartiallySignedTransaction::GetInputUTXO(CTxOut& utxo, int input_index) con
         utxo = input.non_witness_utxo->vout[prevout_index];
     } else if (!input.witness_utxo.IsNull()) {
         utxo = input.witness_utxo;
+    } else if (tx->vin[input_index].m_is_pegin && input.peg_in_value && !input.claim_script.empty()) {
+        // For Peg-ins, get the UTXO from the peg-in stuff
+        utxo = CTxOut(Params().GetConsensus().pegged_asset, CConfidentialValue(*input.peg_in_value), input.claim_script);
     } else {
         return false;
     }
