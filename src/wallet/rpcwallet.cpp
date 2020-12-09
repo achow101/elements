@@ -4612,11 +4612,13 @@ UniValue walletprocesspsbt(const JSONRPCRequest& request)
     }
 
     // If fully blinded, sign if we want to
-    bool sign = request.params[1].isNull() ? true : request.params[1].get_bool();
-    if (sign) {
-        const TransactionError err = FillPSBT(pwallet, psbtx, complete, nHashType, sign, bip32derivs, false);
-        if (err != TransactionError::OK) {
-            throw JSONRPCTransactionError(err);
+    if (psbtx.IsFullyBLinded()) {
+        bool sign = request.params[1].isNull() ? true : request.params[1].get_bool();
+        if (sign) {
+            const TransactionError err = FillPSBT(pwallet, psbtx, complete, nHashType, sign, bip32derivs, false);
+            if (err != TransactionError::OK) {
+                throw JSONRPCTransactionError(err);
+            }
         }
     }
 
