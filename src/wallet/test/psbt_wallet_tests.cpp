@@ -61,7 +61,8 @@ BOOST_AUTO_TEST_CASE(psbt_updater_test)
     ssData >> psbtx;
 
     // Fill transaction with our data
-    BOOST_REQUIRE_EQUAL(TransactionError::OK, FillPSBTData(&m_wallet, psbtx, true));
+    bool complete;
+    BOOST_REQUIRE_EQUAL(TransactionError::OK, FillPSBT(&m_wallet, psbtx, complete));
 
     // Get the final tx
     CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);

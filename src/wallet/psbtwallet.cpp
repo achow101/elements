@@ -211,17 +211,6 @@ void FillPSBTOutputsData(const CWallet* pwallet, PartiallySignedTransaction& psb
     }
 }
 
-TransactionError FillPSBTData(const CWallet* pwallet, PartiallySignedTransaction& psbtx, bool bip32derivs) {
-    LOCK(pwallet->cs_wallet);
-    TransactionError te;
-    te = FillPSBTInputsData(pwallet, psbtx, bip32derivs);
-    if (te != TransactionError::OK) {
-        return te;
-    }
-    FillPSBTOutputsData(pwallet, psbtx, bip32derivs);
-    return TransactionError::OK;
-}
-
 // This function remains for backwards compatibility. It will not succeed in Elements unless everything involved is non-blinded.
 TransactionError FillPSBT(const CWallet* pwallet, PartiallySignedTransaction& psbtx, bool& complete, int sighash_type, bool sign, bool bip32derivs, bool imbalance_ok)
 {
