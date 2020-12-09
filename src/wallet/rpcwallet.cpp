@@ -4605,8 +4605,9 @@ UniValue walletprocesspsbt(const JSONRPCRequest& request)
         }
     }
     if (needs_blinding) {
-        if (WalletBlindPSBT(pwallet, psbtx) != BlindingStatus::OK) {
-            throw JSONRPCError(RPC_WALLET_ERROR, "Something went wrong");
+        BlindingStatus status = WalletBlindPSBT(pwallet, psbtx);
+        if (status != BlindingStatus::OK) {
+            throw JSONRPCError(RPC_WALLET_ERROR, GetBlindingStatusError(status));
         }
     }
 
@@ -4669,8 +4670,9 @@ UniValue walletblindpsbt(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, strprintf("TX decode failed %s", error));
     }
 
-    if (WalletBlindPSBT(pwallet, psbtx) != BlindingStatus::OK) {
-        throw JSONRPCError(RPC_WALLET_ERROR, "Something went wrong");
+    BlindingStatus status = WalletBlindPSBT(pwallet, psbtx);
+    if (status != BlindingStatus::OK) {
+        throw JSONRPCError(RPC_WALLET_ERROR, GetBlindingStatusError(status));
     }
 
     UniValue result(UniValue::VOBJ);
