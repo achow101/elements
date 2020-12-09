@@ -887,6 +887,10 @@ struct PartiallySignedTransaction
      * @return Whether the UTXO for the specified input was found
      */
     bool GetInputUTXO(CTxOut& utxo, int input_index) const;
+    /** Returns whether the PSBT has outputs that require blinding. Said outputs may already be blinded */
+    bool IsBlinded() const;
+    /** Returns whether the PSBT is fully blinded. Fully blinded means that no blinding is required, so this includes PSBTs that do not require blinding at all */
+    bool IsFullyBlinded() const;
 
     template <typename Stream>
     inline void Serialize(Stream& s) const {
