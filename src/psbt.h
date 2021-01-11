@@ -1104,6 +1104,8 @@ struct PartiallySignedTransaction
         if (outputs.size() != output_count) {
             throw std::ios_base::failure("Outputs provided does not match the number of outputs in transaction.");
         }
+
+        CacheUnsignedTxPieces();
     }
 
     template <typename Stream>
