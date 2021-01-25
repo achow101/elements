@@ -1897,6 +1897,7 @@ static RPCHelpMan createpsbt()
                             {"fee", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "A key-value pair. The key (string) is the bitcoin address, the value is the asset label or asset ID."},
                         },
                         },
+                    {"psbt_version", RPCArg::Type::NUM, /* default */ "2", "The PSBT version number to use."},
                 },
                 RPCResult{
                     RPCResult::Type::STR, "", "The resulting raw transaction (base64-encoded string)"
@@ -1914,6 +1915,8 @@ static RPCHelpMan createpsbt()
         UniValueType(), // ARR or OBJ, checked later
         UniValue::VNUM,
         UniValue::VBOOL,
+        UniValue::VOBJ,
+        UniValue::VNUM,
         }, true
     );
 
@@ -1925,7 +1928,15 @@ static RPCHelpMan createpsbt()
     CMutableTransaction rawTx = ConstructTransaction(request.params[0], request.params[1], request.params[2], rbf, request.params[4], &output_pubkeys);
 
     // Make a blank psbt
-    PartiallySignedTransaction psbtx(rawTx, 2 /* version */);
+    uint32_t psbt_version = 2;
+    if (!request.params[5].isNull()) {
+        psbt_version = request.params[4].get_int();
+    }
+    if (psbt_version != 2 && psbt_version != 0) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "The PSBT version can only be 2 or 0");
+    }
+
+    PartiallySignedTransaction psbtx(rawTx, psbt_version);
 /*
     for (unsigned int i = 0; i < rawTx.vout.size(); ++i) {
         psbtx.outputs[i].blinding_pubkey = output_pubkeys[i];
